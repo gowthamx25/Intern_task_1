@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>To-Do List with Timer, Date & Notifications</title>
+  <style>
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: linear-gradient(135deg, #e0f7fa, #80deea);
+      margin: 0;
+      padding: 0;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    h1 {
+      margin-top: 30px;
+      color: #004d40;
+      text-shadow: 1px 1px 2px #fff;
+    }
+
+    form {
+      background: #ffffffdd;
+      backdrop-filter: blur(8px);
+      padding: 15px 20px;
+      margin-top: 20px;
+      border-radius: 12px;
+      box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+
+    input, select, button {
+      padding: 10px;
+      margin: 8px;
+      border: 1px solid #ccc;
+      border-radius: 8px;
+      font-size: 1em;
+    }
+
+    button {
+      background-color: #00796b;
+      color: white;
+      border: none;
+      cursor: pointer;
+      transition: background-color 0.3s ease;
+    }
+
+    button:hover {
+      background-color: #004d40;
+    }
+
+    #task-list {
+      width: 90%;
+      max-width: 600px;
+      margin-top: 20px;
+      list-style: none;
+      padding: 0;
+    }
+
+    li {
+      background: #ffffffcc;
+      backdrop-filter: blur(6px);
+      border: 1px solid #ddd;
+      border-radius: 10px;
+      padding: 15px;
+      margin-bottom: 15px;
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      flex-wrap: wrap;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    }
+
+    .completed {
+      text-decoration: line-through;
+      color: gray;
+    }
+
+    .priority-High { border-left: 6px solid red; }
+    .priority-Medium { border-left: 6px solid orange; }
+    .priority-Low { border-left: 6px solid green; }
+
+    .timer {
+      font-size: 0.85em;
+      color: #333;
+      margin-top: 5px;
+    }
+
+    .date {
+      font-size: 0.75em;
+      color: #666;
+      margin-top: 2px;
+    }
+
+    @media (max-width: 500px) {
+      form {
+        flex-direction: column;
+      }
+
+      input, select, button {
+        width: 100%;
+        margin: 5px 0;
+      }
+
+      li {
+        flex-direction: column;
+        align-items: flex-start;
+      }
+    }
+  </style>
+</head>
+<body>
+
+<h1>To-Do List with Timer, Date & Notifications</h1>
+
+<form id="task-form">
+  <input type="text" id="title" placeholder="Task title" required />
+  <select id="priority">
+    <option value="Low">Low Priority</option>
+    <option value="Medium">Medium Priority</option>
+    <option value="High">High Priority</option>
+  </select>
+  <input type="datetime-local" id="task-date" />
+  <input type="number" id="timer" placeholder="Timer (minutes)" min="1" />
+  <button type="submit">Add Task</button>
+</form>
+
+<ul id="task-list"></ul>
+
+<script>
+  const API_URL = 'http://localhost:5000/tasks'; // Replace with your backend URL
+  let tasks = [];
+  const timers = {};
+
+  // Request notification permission
+  if ('Notification' in window && Notification.permission !== 'granted') {
+    Notification.requestPermission();
+  }
+
+  function notifyUser(message) {
+    if ('Notification' in window && Notification.permission === 'granted') {
+      new Notification('Task Notification', {
+        body: message,
+        icon: 'https://cdn-icons-png.flaticon.com/512/2910/2910799.png'
+      });
+    } else {
+      alert(message);
+    }
+  }
+
+  async function fetchTasks() {
+    try {
+      const res = await fetch(API_URL);
+      tasks = await res.json();
+      renderTasks();
+    } catch (error) {
+      console.error('Error fetching tasks:', error);
+    }
+  }
+
+  async function addTask(e) {
+    e.preventDefault();
+    const title = document.getElementById('title').value.trim();
+    const priority = document.getElementById('priority').value;
+    const timerMinutes = parseInt(document.getElementById('timer').value);
+    const taskDate = document.getElementById('task-date').value;
+    const createdAt = new Date().toISOString();
+
+    if (!title) return;
+
+    try {
+      const res = await fetch(API_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title, priority, createdAt, taskDate, completed: false })
+      });
+
+      const newTask = await res.json();
+
+      if (timerMinutes && !isNaN(timerMinutes)) {
+        const endTime = Date.now() + timerMinutes * 60000;
+        timers[newTask._id] = endTime;
+      }
+
+      document.getElementById('task-form').reset();
+      fetchTasks();
+    } catch (error) {
+      console.error('Error adding task:', error);
+    }
+  }
+
+  async function toggleComplete(id, currentStatus) {
+    try {
+      const task = tasks.find(t => t._id === id);
+      await fetch(`${API_URL}/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ completed: !currentStatus })
+      });
+      if (!currentStatus) {
+        notifyUser(`✅ You completed the task: "${task.title}"`);
+      }
+      fetchTasks();
+    } catch (error) {
+      console.error('Error updating task:', error);
+    }
+  }
+
+  async function deleteTask(id) {
+    try {
+      await fetch(`${API_URL}/${id}`, { method: 'DELETE' });
+      delete timers[id];
+      fetchTasks();
+    } catch (error) {
+      console.error('Error deleting task:', error);
+    }
+  }
+
+  function renderTasks() {
+    const list = document.getElementById('task-list');
+    list.innerHTML = '';
+
+    tasks.forEach(task => {
+      const li = document.createElement('li');
+      li.className = `priority-${task.priority} ${task.completed ? 'completed' : ''}`;
+
+      let remaining = '';
+      if (timers[task._id]) {
+        const diff = Math.max(0, timers[task._id] - Date.now());
+        const mins = Math.floor(diff / 60000);
+        const secs = Math.floor((diff % 60000) / 1000);
+        remaining = `${mins}m ${secs}s`;
+      }
+
+      const dateStr = task.createdAt
+        ? `🕒 Added: ${new Date(task.createdAt).toLocaleString()}`
+        : '';
+
+      const taskDateStr = task.taskDate
+        ? `📅 Due: ${new Date(task.taskDate).toLocaleString()}`
+        : '';
+
+      li.innerHTML = `
+        <div style="flex-grow: 1;">
+          <strong>${task.title}</strong> - ${task.priority}
+          <div class="timer">${remaining}</div>
+          <div class="date">${dateStr}</div>
+          <div class="date">${taskDateStr}</div>
+        </div>
+        <div>
+          <button onclick="toggleComplete('${task._id}', ${task.completed})">${task.completed ? 'Undo' : 'Complete'}</button>
+          <button onclick="deleteTask('${task._id}')">Delete</button>
+        </div>
+      `;
+
+      list.appendChild(li);
+    });
+  }
+
+  setInterval(() => {
+    const now = Date.now();
+    for (const [taskId, endTime] of Object.entries(timers)) {
+      const task = tasks.find(t => t._id === taskId);
+      if (!task || task.completed) continue;
+
+      const diff = endTime - now;
+      if (diff <= 0) {
+        notifyUser(`⏰ Timer for "${task.title}" has ended!`);
+        delete timers[taskId];
+      }
+    }
+    renderTasks();
+  }, 1000);
+
+  document.getElementById('task-form').addEventListener('submit', addTask);
+  fetchTasks();
+</script>
+
+</body>
+</html>
