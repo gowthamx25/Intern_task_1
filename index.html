@@ -125,8 +125,7 @@
     <option value="Medium">Medium Priority</option>
     <option value="High">High Priority</option>
   </select>
-  <input type="datetime-local" id="task-date" />
-  <input type="number" id="timer" placeholder="Timer (minutes)" min="1" />
+  <input type="datetime-local" id="task-date" required />
   <button type="submit">Add Task</button>
 </form>
 
@@ -167,11 +166,11 @@
     e.preventDefault();
     const title = document.getElementById('title').value.trim();
     const priority = document.getElementById('priority').value;
-    const timerMinutes = parseInt(document.getElementById('timer').value);
-    const taskDate = document.getElementById('task-date').value;
-    const createdAt = new Date().toISOString();
+    const taskDateValue = document.getElementById('task-date').value;
+    if (!title || !taskDateValue) return;
 
-    if (!title) return;
+    const taskDate = new Date(taskDateValue).toISOString();
+    const createdAt = new Date().toISOString();
 
     try {
       const res = await fetch(API_URL, {
@@ -182,8 +181,10 @@
 
       const newTask = await res.json();
 
-      if (timerMinutes && !isNaN(timerMinutes)) {
-        const endTime = Date.now() + timerMinutes * 60000;
+      // Set timer based on due date
+      const endTime = new Date(taskDateValue).getTime();
+      const now = Date.now();
+      if (endTime > now) {
         timers[newTask._id] = endTime;
       }
 
@@ -231,10 +232,15 @@
 
       let remaining = '';
       if (timers[task._id]) {
-        const diff = Math.max(0, timers[task._id] - Date.now());
-        const mins = Math.floor(diff / 60000);
-        const secs = Math.floor((diff % 60000) / 1000);
-        remaining = `${mins}m ${secs}s`;
+        const diff = timers[task._id] - Date.now();
+        if (diff > 0) {
+          const hrs = String(Math.floor(diff / 3600000)).padStart(2, '0');
+          const mins = String(Math.floor((diff % 3600000) / 60000)).padStart(2, '0');
+          const secs = String(Math.floor((diff % 60000) / 1000)).padStart(2, '0');
+          remaining = `⏳ ${hrs}:${mins}:${secs} left`;
+        } else {
+          remaining = `⏳ 00:00:00 left`;
+        }
       }
 
       const dateStr = task.createdAt
